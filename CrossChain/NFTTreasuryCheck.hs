@@ -360,7 +360,7 @@ treasurySpendCheck (NFTTreasuryCheckParams (GroupAdminNFTCheckTokenInfo (GroupNF
           && (isValidValue receivedValue (txType /= 2) targetSymbol)
           && (isValidValue changeValue (txType /= 2) targetSymbol)
       else 
-        treasuryInputValue `geq` changeValue
+        treasuryInputValue `leq` changeValue
         -- let changeValues = map snd $ scriptOutputsAt' treasury (getGroupInfoParams groupInfo StkVh) info True
         -- let changeValues = scriptOutputsAt2 treasuryAddress info nonsenseDatum
         -- in treasuryInputValue == (mconcat changeValues)
