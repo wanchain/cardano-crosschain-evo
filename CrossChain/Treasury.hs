@@ -85,7 +85,7 @@ import CrossChain.Types
 {-# INLINABLE mkValidator #-} -- V2.ScriptContext
 mkValidator :: CheckTokenInfo -> () -> () -> BuiltinData -> Bool
 mkValidator (CheckTokenInfo checkTokenSymbol checkTokenName) _ _ rawContext = -- True
-  traceIfFalse "hat" hasTreasuryTokenChecktokenInput
+  traceIfFalse "hat" hasTreasuryTokenInput
   -- && traceIfFalse "dd" hasGroupInfoTokenFromReferenceInputs
   -- test
   where
@@ -105,8 +105,8 @@ mkValidator (CheckTokenInfo checkTokenSymbol checkTokenName) _ _ rawContext = --
         -- go v (TxInInfo'{txInInfoResolved'=TxOut'{txOutValue'}} : rest) = go (v <>txOutValue') rest
         go v (inInfo : rest) = go (v <> (txOutValue' $ txInInfoResolved' inInfo)) rest
 
-    hasTreasuryTokenChecktokenInput :: Bool
-    !hasTreasuryTokenChecktokenInput = 
+    hasTreasuryTokenInput :: Bool
+    !hasTreasuryTokenInput = 
       let !totalInputValue = totalValue -- foldMap (txOutValue' . txInInfoResolved') txInputs
           !amount = valueOf totalInputValue checkTokenSymbol checkTokenName
       in amount == 1

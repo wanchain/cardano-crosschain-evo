@@ -339,7 +339,7 @@ getAmountOfCheckTokeninOwnOutput ctx checkTokenSymbol checkTokenName stk =
           !lockedAmount = valueOf lockedValue checkTokenSymbol checkTokenName
       in 
         if (isSingleAsset lockedValue checkTokenSymbol checkTokenName) then lockedAmount
-        else traceError "x"
+        else traceError "t"
       
 {-# INLINABLE getAmountOfCheckTokenInOutput #-}
 getAmountOfCheckTokenInOutput :: V2.ScriptContext  -> CurrencySymbol -> TokenName-> Integer
@@ -378,39 +378,39 @@ nonsenseDatum :: OutputDatum
 nonsenseDatum = OutputDatum (Datum (PlutusTx.toBuiltinData (NonsenseDatum 1)))
 
 
-{-# INLINABLE scriptOutputsAt' #-}
-scriptOutputsAt' :: ValidatorHash -> BuiltinByteString -> V2.TxInfo -> Bool ->[(Datum, Value)]
-scriptOutputsAt' (ValidatorHash vh) stk V2.TxInfo{V2.txInfoOutputs = os} bCheckDatum = go [] os
-  where
-    go v [] = v
-    go v (V2.TxOut{V2.txOutValue,V2.txOutAddress= Address payCredential stkCredential,V2.txOutDatum} : rest) = 
-      if ((scredentialToBytes payCredential) == vh) && ((stakeCredentialToBytes stkCredential) == stk) then
-        case txOutDatum of
-          OutputDatum datum ->
-            if bCheckDatum then
-              case getNonsenseDatum datum of
-                Just _ -> go ((datum,txOutValue) : v) rest
-                _ -> go v rest
-            else go ((datum,txOutValue) : v) rest
-          _ -> go v rest
-      else go v rest
-
-
-
-
 -- {-# INLINABLE scriptOutputsAt' #-}
 -- scriptOutputsAt' :: ValidatorHash -> BuiltinByteString -> V2.TxInfo -> Bool ->[(Datum, Value)]
--- scriptOutputsAt' h stk p bCheckDatum =
---     let flt V2.TxOut{V2.txOutDatum=d, V2.txOutAddress=Address (ScriptCredential s) stk', V2.txOutValue} | s == h && (stakeCredentialToBytes stk') == stk = case d of
---           OutputDatum datum -> 
---             if bCheckDatum then 
+-- scriptOutputsAt' (ValidatorHash vh) stk V2.TxInfo{V2.txInfoOutputs = os} bCheckDatum = go [] os
+--   where
+--     go v [] = v
+--     go v (V2.TxOut{V2.txOutValue,V2.txOutAddress= Address payCredential stkCredential,V2.txOutDatum} : rest) = 
+--       if ((scredentialToBytes payCredential) == vh) && ((stakeCredentialToBytes stkCredential) == stk) then
+--         case txOutDatum of
+--           OutputDatum datum ->
+--             if bCheckDatum then
 --               case getNonsenseDatum datum of
---                 Just nonsense -> Just (datum, txOutValue)
---                 _ -> Nothing
---             else Just (datum, txOutValue)
---           _ -> Nothing
---         flt _ = Nothing
---     in mapMaybe flt (V2.txInfoOutputs p)
+--                 Just _ -> go ((datum,txOutValue) : v) rest
+--                 _ -> go v rest
+--             else go ((datum,txOutValue) : v) rest
+--           _ -> go v rest
+--       else go v rest
+
+
+
+
+{-# INLINABLE scriptOutputsAt' #-}
+scriptOutputsAt' :: ValidatorHash -> BuiltinByteString -> V2.TxInfo -> Bool ->[(Datum, Value)]
+scriptOutputsAt' h stk p bCheckDatum =
+    let flt V2.TxOut{V2.txOutDatum=d, V2.txOutAddress=Address (ScriptCredential s) stk', V2.txOutValue} | s == h && (stakeCredentialToBytes stk') == stk = case d of
+          OutputDatum datum -> 
+            if bCheckDatum then 
+              case getNonsenseDatum datum of
+                Just nonsense -> Just (datum, txOutValue)
+                _ -> Nothing
+            else Just (datum, txOutValue)
+          _ -> Nothing
+        flt _ = Nothing
+    in mapMaybe flt (V2.txInfoOutputs p)
 
 {-# INLINABLE scriptOutputsAt2 #-}
 scriptOutputsAt2 :: Address -> V2.TxInfo -> OutputDatum ->[Value]
@@ -438,13 +438,14 @@ outputsOf addr p =
     in mapMaybe flt (txInfoOutputs p)
 
 {-# INLINABLE valueLockedByAndCheckDatum #-}
-valueLockedByAndCheckDatum :: V2.TxInfo -> ValidatorHash -> BuiltinByteString -> BuiltinByteString -> (Value,Integer)
+valueLockedByAndCheckDatum :: V2.TxInfo -> ValidatorHash -> BuiltinByteString -> BuiltinByteString -> Value
 valueLockedByAndCheckDatum ptx h stk userData =
     let 
       valuesAndDatums = filter (\o -> (serialiseData $ getDatum $ fst o) == userData) (scriptOutputsAt' h stk ptx False)
       totalValue = mconcat $ map snd valuesAndDatums
       len = length valuesAndDatums
-    in (totalValue,len)
+    in if len > 1 then traceError "a"
+       else totalValue
 
 {-# INLINABLE pubKeyOutputsAt' #-}
 -- | Get the values paid to a public key address by a pending transaction.

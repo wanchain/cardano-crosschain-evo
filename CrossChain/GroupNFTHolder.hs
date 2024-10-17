@@ -103,11 +103,11 @@ mkValidator (GroupAdminNFTInfo (GroupNFTTokenInfo groupNftSymbol groupNftName) (
       | action > 0 = 
         case V2.getContinuingOutputs ctx of
           [o] -> o  
-          _   -> traceError "expected exactly one groupInfotoken output"
+          _   -> traceError "a"
       | action == 0 = 
         case lockedByTarget of
           [o] -> o
-          _   -> traceError "expected exactly one groupInfotoken output"
+          _   -> traceError "b"
 
     groupInfoParams:: V2.TxOut->GroupInfoParams
     groupInfoParams (V2.TxOut _ _ txOutDatum _) =

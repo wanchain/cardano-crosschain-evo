@@ -65,13 +65,16 @@ import Ledger.Crypto (PubKey (..), PubKeyHash, pubKeyHash)
 import Plutus.V1.Ledger.Bytes (LedgerBytes (LedgerBytes),fromBytes,getLedgerBytes)
 import Ledger.Ada  as Ada
 import Plutus.V1.Ledger.Value (valueOf) --,currencySymbol,tokenName,symbols,flattenValue,assetClass)
+-- import Plutus.V1.Ledger.Interval (Extended (..))
 import PlutusTx.Builtins --(decodeUtf8,sha3_256,appendByteString)
 import Ledger.Address 
 import Ledger.Value
 import Plutus.V2.Ledger.Contexts as V2
 import Ledger.Typed.Scripts qualified as Scripts hiding (validatorHash)
 import Plutus.V1.Ledger.Tx
-import CrossChain.Types hiding (uniqueId)
+import CrossChain.Types2 
+import CrossChain.Types (GroupAdminNFTCheckTokenInfo (..), GroupNFTTokenInfo (..),ParamType (..),GroupInfoParams (..),NonsenseDatum (..), AdminNftTokenInfo (..), CheckTokenInfo (..))
+import Plutus.Script.Utils.V2.Address (mkValidatorAddress)
 -- ===================================================
 -- import Plutus.V1.Ledger.Value
 -- import Ledger.Address (PaymentPrivateKey (PaymentPrivateKey, unPaymentPrivateKey), PaymentPubKey (PaymentPubKey),PaymentPubKeyHash (..),unPaymentPubKeyHash,toPubKeyHash,toValidatorHash)
@@ -117,64 +120,47 @@ instance Scripts.ValidatorTypes TreasuryType where
     type instance DatumType TreasuryType = ()
     type instance RedeemerType TreasuryType = NFTMintCheckRedeemer
 
--- data GroupAdminNFTCheckTokenInfo
---   = GroupAdminNFTCheckTokenInfo
---       { groupNftInfo :: GroupNFTTokenInfo
---         , adminNft :: AdminNftTokenInfo
---         , checkToken:: CheckTokenInfo
---       } deriving stock (Generic)
---         deriving anyclass (ToJSON, FromJSON)
-
--- PlutusTx.unstableMakeIsData ''GroupAdminNFTCheckTokenInfo
--- PlutusTx.makeLift ''GroupAdminNFTCheckTokenInfo
 
 {-# INLINABLE burnTokenCheck #-}
-burnTokenCheck :: GroupAdminNFTCheckTokenInfo -> V2.ScriptContext -> Bool
+burnTokenCheck :: GroupAdminNFTCheckTokenInfo -> StoremanScriptContext -> Bool
 burnTokenCheck (GroupAdminNFTCheckTokenInfo (GroupNFTTokenInfo groupInfoCurrency groupInfoTokenName) (AdminNftTokenInfo adminNftSymbol adminNftName) (CheckTokenInfo checkTokenSymbol checkTokenName)) ctx = 
   traceIfFalse "a"  hasAdminNftInInput
-  -- && traceIfFalse "b" checkOutput
+  && traceIfFalse "b" checkOutput
   where 
-    info :: V2.TxInfo
-    !info = V2.scriptContextTxInfo ctx
+    info :: TxInfo'
+    !info = scriptContextTxInfo' ctx
 
-    groupInfo :: GroupInfoParams
-    !groupInfo = getGroupInfo info groupInfoCurrency groupInfoTokenName
-
+  
     hasAdminNftInInput :: Bool
     hasAdminNftInInput = 
-      let !totalInputValue = V2.valueSpent info
+      let !totalInputValue = valueSpent' info
           !amount = valueOf totalInputValue adminNftSymbol adminNftName
       in amount == 1
 
     checkOutput :: Bool
     checkOutput = 
-      let outputValue = V2.valueProduced info
+      let !outputValue = valueProduced' info
       in valueOf outputValue checkTokenSymbol checkTokenName == 0
-      -- let !totalAmountOfCheckTokenInOutput = getAmountOfCheckTokenInOutput ctx checkTokenSymbol checkTokenName
-      --     outputsAtChecker = map snd $ scriptOutputsAt' (ValidatorHash (getGroupInfoParams groupInfo NFTMintCheckVH)) (getGroupInfoParams groupInfo StkVh) info True
-      --     outputAtCheckerSum = valueOf (mconcat outputsAtChecker) checkTokenSymbol checkTokenName
-      -- in totalAmountOfCheckTokenInOutput == outputAtCheckerSum && (length outputsAtChecker) == outputAtCheckerSum
 
 
 
 
 {-# INLINABLE mintSpendCheck #-}
-mintSpendCheck :: GroupAdminNFTCheckTokenInfo -> NFTMintCheckProof -> V2.ScriptContext -> Bool
-mintSpendCheck (GroupAdminNFTCheckTokenInfo (GroupNFTTokenInfo groupInfoCurrency groupInfoTokenName) (AdminNftTokenInfo adminNftSymbol adminNftName) (CheckTokenInfo checkTokenSymbol checkTokenName)) NFTMintCheckProof{proof= p@NFTMintCheckProofData{uniqueId, nonce, mode, toAddr, policy, nftAssets, userData, nftRefAssets, ttl}, signature} ctx = 
-  traceIfFalse "1" hasUTxO  && 
-  traceIfFalse "2" (amountOfCheckTokeninOwnOutput == 1) && 
-  traceIfFalse "3" checkSignature &&  
-  -- traceIfFalse "m3" checkMint && 
-  traceIfFalse "4" checkOutput &&
-  traceIfFalse "5" checkTtl
+mintSpendCheck :: GroupAdminNFTCheckTokenInfo -> NFTMintCheckProof -> StoremanScriptContext -> Bool
+mintSpendCheck (GroupAdminNFTCheckTokenInfo (GroupNFTTokenInfo groupInfoCurrency groupInfoTokenName) _ (CheckTokenInfo checkTokenSymbol checkTokenName)) NFTMintCheckProof{proof= p@NFTMintCheckProofData{uniqueId, nonce, mode, toAddr, policy, nftAssets, userData, nftRefAssets, ttl}, signature} ctx = 
+  traceIfFalse "1" hasUTxO 
+  && traceIfFalse "2" (amountOfCheckTokeninOwnOutput == 1) 
+  && traceIfFalse "3" checkSignature
+  && traceIfFalse "4" checkOutput 
+  && traceIfFalse "5" checkTtl
   where
     
-    info :: V2.TxInfo
-    !info = V2.scriptContextTxInfo ctx
+    info :: TxInfo'
+    !info = scriptContextTxInfo' ctx
 
     hasUTxO :: Bool
     hasUTxO = 
-      let V2.ScriptContext{V2.scriptContextPurpose=Spending txOutRef} = ctx in txOutRef == nonce
+      let StoremanScriptContext{scriptContextPurpose'=Spending txOutRef} = ctx in txOutRef == nonce
 
     groupInfo :: GroupInfoParams
     !groupInfo = getGroupInfo info groupInfoCurrency groupInfoTokenName
@@ -185,56 +171,27 @@ mintSpendCheck (GroupAdminNFTCheckTokenInfo (GroupNFTTokenInfo groupInfoCurrency
     amountOfCheckTokeninOwnOutput :: Integer
     amountOfCheckTokeninOwnOutput = getAmountOfCheckTokeninOwnOutput ctx checkTokenSymbol checkTokenName stkVh
 
-    -- hashRedeemer :: BuiltinByteString
-    -- hashRedeemer = 
-    --     let tmp1 = serialiseData $ PlutusTx.toBuiltinData p
-    --     in sha3_256 tmp1
+    hashRedeemer :: BuiltinByteString
+    !hashRedeemer = sha3_256 (serialiseData $ PlutusTx.toBuiltinData p)
 
-
-    -- checkSignature :: Bool
-    -- !checkSignature -- mode pk hash signature
-    --   | mode == 0 = verifyEcdsaSecp256k1Signature (getGroupInfoParams groupInfo GPK) hashRedeemer signature
-    --   | mode == 1 = verifySchnorrSecp256k1Signature (getGroupInfoParams groupInfo GPK) hashRedeemer signature
-    --   | mode == 2 = verifyEd25519Signature (getGroupInfoParams groupInfo GPK) hashRedeemer signature
+    gpk :: BuiltinByteString
+    !gpk = getGroupInfoParams groupInfo GPK
 
     checkSignature :: Bool
-    checkSignature =
-      let gpk = getGroupInfoParams groupInfo GPK
-          hashRedeemer = sha3_256 (serialiseData (PlutusTx.toBuiltinData p))
-      in 
-        if mode == 0 then verifyEcdsaSecp256k1Signature gpk hashRedeemer signature
-        else if mode == 1 then verifySchnorrSecp256k1Signature gpk hashRedeemer signature
-        else verifyEd25519Signature gpk hashRedeemer signature
-
-
-    -- nftCrossValue :: Value
-    -- nftCrossValue = mconcat $ map (\(cname,amount) -> Plutus.singleton (CurrencySymbol policy) (TokenName cname) amount) nftAssets
-
-    -- nftRefCrossValue :: Value
-    -- nftRefCrossValue = mconcat $ map (\(_,cname,amount) -> Plutus.singleton (CurrencySymbol policy) (TokenName cname) 1) nftRefAssets
-
-
-
-    -- outputs :: [V2.TxOut]
-    -- !outputs = V2.txInfoOutputs info
-
-    -- nftRefHolderAddress :: Address
-    -- nftRefHolderAddress = Address (Plutus.ScriptCredential  (ValidatorHash (getGroupInfoParams groupInfo NFTRefHolderVH)) ) (Just (Plutus.StakingHash (Plutus.ScriptCredential (ValidatorHash stkVh))))
+    checkSignature -- mode pk hash signature
+      | mode == 0 = verifyEcdsaSecp256k1Signature gpk hashRedeemer signature
+      | mode == 1 = verifySchnorrSecp256k1Signature gpk hashRedeemer signature
+      | mode == 2 = verifyEd25519Signature gpk hashRedeemer signature
 
 
     getNftRefOutputValue :: (Integer,BuiltinByteString,OutputDatum) -> Value
-    getNftRefOutputValue (i,_,d) = 
+    getNftRefOutputValue (i,cname,d) = 
       let 
-          V2.TxOut{V2.txOutAddress = Address (Plutus.ScriptCredential s) _, V2.txOutValue, V2.txOutDatum} = (V2.txInfoOutputs info) !! i
+          TxOut'{txOutAddress' = Address (Plutus.ScriptCredential s) _, txOutValue', txOutDatum'} = (txInfoOutputs' info) !! i
           nftRefHolderVH = ValidatorHash (getGroupInfoParams groupInfo NFTRefHolderVH)
-          -- V2.TxOut{V2.txOutAddress, V2.txOutValue, V2.txOutDatum} = (V2.txInfoOutputs info) !! i
-          -- nftRefHolderAddress = Address (Plutus.ScriptCredential  (ValidatorHash (getGroupInfoParams groupInfo NFTRefHolderVH)) ) Nothing --(Just (Plutus.StakingHash (Plutus.ScriptCredential (ValidatorHash stkVh))))
       in 
-        -- case (nftRefHolderAddress == txOutAddress) && (txOutDatum == d) of
-        --   True -> txOutValue
-        -- if (nftRefHolderAddress == txOutAddress) && (txOutDatum == d) then txOutValue
-        if (nftRefHolderVH == s) && (txOutDatum == d) then txOutValue
-        else Ada.lovelaceValueOf 0
+        if (nftRefHolderVH == s) && (txOutDatum' == d) && ((valueOf txOutValue' (CurrencySymbol policy) (TokenName cname)) == 1) then Plutus.singleton (CurrencySymbol policy) (TokenName cname) 1
+        else traceError "A"
 
 
     -- 1. check the reciever ,including toaddr and nftrefholder ,are correct
@@ -243,44 +200,39 @@ mintSpendCheck (GroupAdminNFTCheckTokenInfo (GroupNFTTokenInfo groupInfoCurrency
     checkOutput = 
         -- let receivedNftValue =  mconcat (map snd $ filter (\item -> (fst item) == userData) (outputsOf toAddr info))
         let !receivedNftValue = mconcat $ scriptOutputsAt2 toAddr info userData
-            receivedNftRefValue = mconcat (map getNftRefOutputValue nftRefAssets)
-            !mintValue = V2.txInfoMint info
+            -- receivedNftRefValue = mconcat (map getNftRefOutputValue nftRefAssets)
+            !nftRefCrossValue =  mconcat (map getNftRefOutputValue nftRefAssets)
+            !mintValue = txInfoMint' info
             !nftCrossValue = mconcat $ map (\(cname,amount) -> Plutus.singleton (CurrencySymbol policy) (TokenName cname) amount) nftAssets
-            !nftRefCrossValue = mconcat $ map (\(_,cname,_) -> Plutus.singleton (CurrencySymbol policy) (TokenName cname) 1) nftRefAssets
+            -- !nftRefCrossValue = mconcat $ map (\(_,cname,_) -> Plutus.singleton (CurrencySymbol policy) (TokenName cname) 1) nftRefAssets
         in 
             mintValue == (nftCrossValue <> nftRefCrossValue)
             && receivedNftValue `geq` nftCrossValue
-            && receivedNftRefValue `geq` nftRefCrossValue
+            -- && receivedNftRefValue `geq` nftRefCrossValue
     
     checkTtl :: Bool
-    checkTtl = 
-      let range = V2.txInfoValidRange info
-          ttlRange = to (Plutus.POSIXTime ttl)
-      in ttlRange == range 
+    checkTtl = (Plutus.POSIXTime (ttl + 1)) `after` (txInfoValidRange' info)
 
 
 {-# INLINABLE mkValidator #-}
-mkValidator :: GroupAdminNFTCheckTokenInfo ->() -> NFTMintCheckRedeemer  -> V2.ScriptContext -> Bool
-mkValidator storeman _ redeemer ctx = 
+mkValidator :: GroupAdminNFTCheckTokenInfo ->() -> NFTMintCheckRedeemer  -> BuiltinData -> Bool
+mkValidator storeman _ redeemer rawContext = 
   case redeemer of
     BurnNFTMintCheckToken -> burnTokenCheck storeman ctx
     NFTMintCheckRedeemer mintCheckProof -> mintSpendCheck storeman mintCheckProof ctx
+  where
+    ctx = PlutusTx.unsafeFromBuiltinData @StoremanScriptContext rawContext
 
 
-typedValidator :: GroupAdminNFTCheckTokenInfo -> PV2.TypedValidator TreasuryType
-typedValidator = PV2.mkTypedValidatorParam @TreasuryType
-    $$(PlutusTx.compile [|| mkValidator ||])
-    $$(PlutusTx.compile [|| wrap ||])
-    where
-        wrap = PV2.mkUntypedValidator
-
-
-validator :: GroupAdminNFTCheckTokenInfo -> Validator
-validator = PV2.validatorScript . typedValidator
+validator :: GroupAdminNFTCheckTokenInfo -> Scripts.Validator
+validator p = Plutus.mkValidatorScript $
+    $$(PlutusTx.compile [|| validatorParam ||])
+        `PlutusTx.applyCode`
+            PlutusTx.liftCode p
+    where validatorParam s = mkUntypedValidator' (mkValidator s)
 
 script :: GroupAdminNFTCheckTokenInfo -> Plutus.Script
 script = unValidatorScript . validator
-
 
 mintNFTCheckScript :: GroupAdminNFTCheckTokenInfo ->  PlutusScript PlutusScriptV2
 mintNFTCheckScript p = PlutusScriptSerialised
@@ -290,8 +242,7 @@ mintNFTCheckScript p = PlutusScriptSerialised
   (script p)
 
 mintNFTCheckScriptHash :: GroupAdminNFTCheckTokenInfo -> Plutus.ValidatorHash
-mintNFTCheckScriptHash = PV2.validatorHash .typedValidator
-
+mintNFTCheckScriptHash = Scripts.validatorHash . validator
 
 mintNFTCheckAddress ::GroupAdminNFTCheckTokenInfo -> Ledger.Address
-mintNFTCheckAddress = PV2.validatorAddress . typedValidator
+mintNFTCheckAddress = mkValidatorAddress . validator
