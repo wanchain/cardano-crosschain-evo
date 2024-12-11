@@ -24,7 +24,7 @@
 
 module CrossChain.Types2 where
 
-import Prelude hiding((&&),(==),($),(!!),(<),(>),(/=),(.),negate,length,filter,map,fst,snd,mconcat,any,not,foldMap)
+import Prelude hiding((&&),(==),($),(!!),(<),(>),(/=),(.),(||),negate,length,filter,map,fst,snd,mconcat,all,not,foldMap)
 import GHC.Generics (Generic)
 -- import Builtins qualified as Builtins
 import Data.ByteString qualified as ByteString
@@ -333,7 +333,7 @@ ownHash' p = fst (ownHashes' p)
 
 {-# INLINABLE isSingleAsset #-}
 isSingleAsset :: Value -> CurrencySymbol -> TokenName -> Bool
-isSingleAsset v cs tk = not $ any (\(cs',tk',_) -> cs' /= cs && cs' /= Ada.adaSymbol && tk' /= tk && tk' /= Ada.adaToken) $ flattenValue v
+isSingleAsset v cs tk = all (\(cs',tk',_) -> (cs' == cs && tk' == tk) || (cs' == Ada.adaSymbol  && tk' == Ada.adaToken)) $ flattenValue v
 
 {-# INLINABLE getAmountOfCheckTokeninOwnOutput #-}
 getAmountOfCheckTokeninOwnOutput :: StoremanScriptContext  -> CurrencySymbol -> TokenName-> BuiltinByteString -> Integer

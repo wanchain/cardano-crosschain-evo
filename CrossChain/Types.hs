@@ -23,7 +23,7 @@
 
 module CrossChain.Types where
 
-import Prelude hiding((&&),(==),($),(!!),(<),(>),(/=),negate,length,filter,map,fst,snd,mconcat,any,not)
+import Prelude hiding((&&),(==),($),(!!),(<),(>),(/=),(||),negate,length,filter,map,fst,snd,mconcat,all,not)
 import GHC.Generics (Generic)
 -- import Builtins qualified as Builtins
 import Data.ByteString qualified as ByteString
@@ -330,7 +330,7 @@ getTotalAmountOfAssetInInput ctx checkTokenSymbol checkTokenName =
 
 {-# INLINABLE isSingleAsset #-}
 isSingleAsset :: Value -> CurrencySymbol -> TokenName -> Bool
-isSingleAsset v cs tk = not $ any (\(cs',tk',_) -> cs' /= cs && cs' /= Ada.adaSymbol && tk' /= tk && tk' /= Ada.adaToken) $ flattenValue v
+isSingleAsset v cs tk = all (\(cs',tk',_) -> (cs' == cs && tk' == tk) || (cs' == Ada.adaSymbol  && tk' == Ada.adaToken)) $ flattenValue v
 
 {-# INLINABLE getAmountOfCheckTokeninOwnOutput #-}
 getAmountOfCheckTokeninOwnOutput :: V2.ScriptContext  -> CurrencySymbol -> TokenName-> BuiltinByteString -> Integer
